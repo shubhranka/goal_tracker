@@ -1,0 +1,12 @@
+node_modules
+server/node_modules
+.env
+.env.local
+.DS_Store
+npm-debug.log
+.gitignore
+Dockerfile
+.dockerignore
+README.md
+GEMINI.md
+metadata.json
