@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 // import { Goal, GoalNode } from "../types";
 // import { v4 as uuidv4 } from 'uuid';
 
-const API_URL = 'http://localhost:3001/api/goals';
+const API_URL = 'https://goal-tracker-backend-uh3k.onrender.com/api/goals';
 
 export interface ProgressSnapshot {
   timestamp: number;
