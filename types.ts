@@ -8,6 +8,7 @@ export interface Goal {
   createdAt: number;
   completedAt?: number; // Timestamp for completion
   scheduledDays?: number[]; // Days of week (0=Sun, 1=Mon, ...)
+  oneTimeTask?: number; // Specific date for one-time tasks (timestamp)
   expanded?: boolean; // UI state for tree view
   reminder?: number; // Timestamp for reminder
 }

@@ -28,6 +28,10 @@ interface GoalItemProps {
   onMove: (id: string, direction: 'up' | 'down') => void;
   onSetReminder: (id: string, timestamp: number | undefined) => void;
   onToggleScheduledDay: (id: string, day: number) => void;
+  onSetOneTimeTask: (id: string, date: number | undefined) => void;
+  onGoalClick?: (goal: GoalNode) => void;
+  appMode?: 'edit' | 'work';
+  viewMode?: 'today' | 'all';
 }
 
 const GoalItem: React.FC<GoalItemProps> = ({ 
@@ -41,12 +45,17 @@ const GoalItem: React.FC<GoalItemProps> = ({
   onToggleComplete,
   onMove,
   onSetReminder,
-  onToggleScheduledDay
+  onToggleScheduledDay,
+  onSetOneTimeTask,
+  onGoalClick,
+  appMode = 'edit',
+  viewMode = 'today'
 }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [motivation, setMotivation] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const dateInputRef = useRef<HTMLInputElement>(null);
+  const oneTimeDateRef = useRef<HTMLInputElement>(null);
 
   const hasChildren = node.children.length > 0;
   const isCompleted = node.computedProgress === 100;
@@ -60,6 +69,7 @@ const GoalItem: React.FC<GoalItemProps> = ({
         const timer = setTimeout(() => setConfirmDelete(false), 3000);
         return () => clearTimeout(timer);
     }
+    return undefined;
   }, [confirmDelete]);
 
   const handleGetMotivation = async (e: React.MouseEvent) => {
@@ -71,7 +81,11 @@ const GoalItem: React.FC<GoalItemProps> = ({
 
   const handleRowClick = (e: React.MouseEvent) => {
       e.stopPropagation();
-      onSelect(node.id);
+      if (appMode === 'work' && onGoalClick && !isCompleted && viewMode === 'today') {
+          onGoalClick(node);
+      } else {
+          onSelect(node.id);
+      }
   };
 
   const handleDeleteClick = (e: React.MouseEvent) => {
@@ -105,9 +119,17 @@ const GoalItem: React.FC<GoalItemProps> = ({
       }
   };
 
-  const handleDayChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const value = e.target.value;
-    onSetScheduledDay(node.id, value === 'none' ? undefined : parseInt(value));
+  const handleOneTimeTaskClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    oneTimeDateRef.current?.showPicker();
+  };
+
+  const handleOneTimeDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.value) {
+      onSetOneTimeTask(node.id, new Date(e.target.value).getTime());
+    } else {
+      onSetOneTimeTask(node.id, undefined);
+    }
   };
   
   return (
@@ -116,9 +138,11 @@ const GoalItem: React.FC<GoalItemProps> = ({
     >
       <div 
         className={`
-          group relative flex items-center gap-3 p-2 rounded-lg transition-all duration-200 border
+          group relative flex items-center gap-3 p-2 rounded-lg transition-all duration-200 border cursor-pointer
           ${active 
             ? 'bg-brand-50/80 border-brand-200 shadow-sm' 
+            : appMode === 'work'
+            ? 'bg-transparent border-transparent hover:bg-green-50 hover:border-green-200'
             : 'bg-transparent border-transparent hover:bg-slate-50 hover:border-slate-100'}
         `}
         style={{ marginLeft: `${node.depth * 24}px` }}
@@ -137,7 +161,7 @@ const GoalItem: React.FC<GoalItemProps> = ({
         )}
 
         {/* Move Controls */}
-        <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 -ml-1">
+        <div className={`flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 -ml-1 ${appMode === 'work' ? 'hidden' : ''}`}>
              <button 
                 onClick={(e) => { e.stopPropagation(); onMove(node.id, 'up'); }}
                 className="p-0.5 hover:bg-slate-200 rounded text-slate-300 hover:text-brand-500"
@@ -162,7 +186,7 @@ const GoalItem: React.FC<GoalItemProps> = ({
           }}
           className={`
             p-1 rounded hover:bg-slate-200 text-slate-400 transition-colors z-10 flex-shrink-0
-            ${!hasChildren ? 'invisible' : ''}
+            ${!hasChildren || appMode === 'work' ? 'invisible' : ''}
           `}
         >
           {node.expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
@@ -177,6 +201,7 @@ const GoalItem: React.FC<GoalItemProps> = ({
           className={`
             transition-colors duration-300 flex-shrink-0 z-10
             ${isCompleted ? 'text-green-500' : 'text-slate-300 hover:text-brand-500'}
+            ${appMode === 'work' ? 'invisible' : ''}
           `}
         >
           {isCompleted ? <CheckCircle2 size={18} /> : <Circle size={18} />}
@@ -185,6 +210,12 @@ const GoalItem: React.FC<GoalItemProps> = ({
         {/* Title & Progress */}
         <div className="flex-1 min-w-0 flex flex-col z-0">
           <div className="flex items-center gap-2">
+            {/* Work Mode Indicator */}
+            {appMode === 'work' && !isCompleted && viewMode === 'today' && (
+              <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-medium">
+                Start session
+              </span>
+            )}
             <h3 className={`text-sm truncate font-medium font-sans ${isCompleted ? 'text-slate-400 line-through decoration-slate-300' : 'text-slate-700'}`}>
               {node.title}
             </h3>
@@ -197,10 +228,17 @@ const GoalItem: React.FC<GoalItemProps> = ({
                  </span>
             )}
             
-            {node.scheduledDays !== undefined && (
+            {node.scheduledDays !== undefined && node.scheduledDays.length > 0 && (
               <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full flex items-center gap-1">
                 <Calendar size={10} />
-                {node.scheduledDays.length === 0 ? 'Daily' : node.scheduledDays.map(day => daysOfWeek[day]).join(', ')}
+                {node.scheduledDays.map(day => daysOfWeek[day]).join(', ')}
+              </span>
+            )}
+            
+            {node.oneTimeTask && (
+              <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full flex items-center gap-1">
+                <Calendar size={10} />
+                {new Date(node.oneTimeTask).toLocaleDateString()}
               </span>
             )}
           </div>
@@ -218,7 +256,7 @@ const GoalItem: React.FC<GoalItemProps> = ({
           )}
 
           {/* Slider for Leaf Nodes */}
-          {node.isLeaf && !isCompleted && active && (
+          {node.isLeaf && !isCompleted && active && appMode === 'edit' && (
              <motion.div
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: 'auto', opacity: 1 }}
@@ -239,7 +277,7 @@ const GoalItem: React.FC<GoalItemProps> = ({
         </div>
 
         {/* Actions - Always mounted, visibility toggled */}
-        <div className={`flex items-center gap-2 z-10 transition-opacity duration-200 ${isHovered || active || confirmDelete ? 'opacity-100' : 'opacity-0'}`}>
+        <div className={`flex items-center gap-2 z-10 transition-opacity duration-200 ${appMode === 'work' ? 'opacity-0 pointer-events-none' : (isHovered || active || confirmDelete ? 'opacity-100' : 'opacity-0')}`}>
            {!confirmDelete ? (
               <>
                 <div className="flex items-center gap-1">
@@ -269,6 +307,24 @@ const GoalItem: React.FC<GoalItemProps> = ({
                         type="datetime-local"
                         className="absolute inset-0 opacity-0 pointer-events-none w-0 h-0"
                         onChange={handleDateChange}
+                        onClick={(e) => e.stopPropagation()}
+                    />
+                </div>
+
+                <div className="relative">
+                    <button
+                        onClick={handleOneTimeTaskClick}
+                        className={`p-1.5 rounded transition-colors ${node.oneTimeTask ? 'text-purple-500 bg-purple-50' : 'text-slate-400 hover:bg-slate-100 hover:text-purple-500'}`}
+                        title="Set One-Time Task"
+                    >
+                        <Calendar size={14} />
+                    </button>
+                    {/* Hidden Date Input */}
+                    <input 
+                        ref={oneTimeDateRef}
+                        type="date"
+                        className="absolute inset-0 opacity-0 pointer-events-none w-0 h-0"
+                        onChange={handleOneTimeDateChange}
                         onClick={(e) => e.stopPropagation()}
                     />
                 </div>

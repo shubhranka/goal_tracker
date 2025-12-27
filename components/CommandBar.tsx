@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Terminal, CornerDownLeft, Sparkles, Command } from 'lucide-react';
+import { Terminal, CornerDownLeft, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface CommandBarProps {

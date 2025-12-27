@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { Routes, Route, Link } from 'react-router-dom';
-import { Target, Search, BarChart2, Home, List } from 'lucide-react';
+import { Target, Search, BarChart2, Home, List, Edit, Briefcase } from 'lucide-react';
 import { Goal, GoalNode } from './types';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { loadGoals, addGoal, updateGoal, deleteGoal, createGoal, buildGoalTree, flattenGoalTree, loadHistory, saveHistory, ProgressSnapshot } from './services/goalService';
@@ -9,12 +9,15 @@ import GoalItem from './components/GoalItem';
 import CommandBar from './components/CommandBar';
 import StatsViz from './components/StatsViz';
 import VisualizationPage from './pages/VisualizationPage';
+import PomodoroTimer from './components/PomodoroTimer';
 
 const App: React.FC = () => {
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'today' | 'all'>('today');
+  const [appMode, setAppMode] = useState<'edit' | 'work'>('edit');
+  const [pomodoroGoal, setPomodoroGoal] = useState<Goal | null>(null);
 
   const { data: goals = [] } = useQuery<Goal[], Error>({
     queryKey: ['goals'],
@@ -62,10 +65,22 @@ const App: React.FC = () => {
   // Derived state: Tree Structure
   const goalTree = useMemo(() => {
     if (viewMode === 'today') {
-      const today = new Date().getDay(); // 0 for Sunday, 1 for Monday, etc.
+      const today = new Date();
+      const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+      const todayEnd = todayStart + 24 * 60 * 60 * 1000; // End of today
+      
       const todaysGoals = goals.filter(g => {
-        // Daily task (empty array) or scheduled for today
-        return (g.scheduledDays && g.scheduledDays.length === 0) || (g.scheduledDays?.includes(today));
+        // Skip completed tasks
+        if (g.isCompleted) return false;
+        
+        // Scheduled for today (specific days selected)
+        const isScheduledToday = g.scheduledDays && g.scheduledDays.length > 0 && g.scheduledDays.includes(today.getDay());
+        // One-time task scheduled for today
+        const isOneTimeToday = g.oneTimeTask && g.oneTimeTask >= todayStart && g.oneTimeTask < todayEnd;
+        // Unscheduled one-time task (has oneTimeTask field but no date set)
+        const isUnscheduledOneTime = g.oneTimeTask === undefined && g.scheduledDays === undefined;
+        
+        return isScheduledToday || isOneTimeToday || isUnscheduledOneTime;
       });
       return buildGoalTree(todaysGoals);
     }
@@ -265,7 +280,7 @@ const App: React.FC = () => {
       return g;
     });
 
-    updatedGoals.filter(g => idsToUpdate.includes(g.id)).forEach(updateGoalMutation.mutate);
+    updatedGoals.filter(g => idsToUpdate.includes(g.id)).forEach(goal => updateGoalMutation.mutate(goal));
   };
 
   const handleMoveGoal = async (id: string, direction: 'up' | 'down') => {
@@ -339,9 +354,38 @@ const App: React.FC = () => {
     }
   };
 
+  const handleSetOneTimeTask = (id: string, date: number | undefined) => {
+    const goal = goals.find(g => g.id === id);
+    if (goal) {
+      const updatedGoal = { ...goal, oneTimeTask: date };
+      updateGoalMutation.mutate(updatedGoal);
+    }
+  };
+
   const getParentTitle = () => {
       if (!selectedId) return null;
       return goals.find(g => g.id === selectedId)?.title || null;
+  };
+
+  const handleGoalClick = (goal: Goal) => {
+      if (appMode === 'work') {
+          setPomodoroGoal(goal);
+      }
+  };
+
+  const handlePomodoroComplete = (completed: boolean) => {
+      if (!pomodoroGoal) return;
+      
+      if (completed) {
+          handleToggleComplete(pomodoroGoal.id);
+      } else {
+          // Increase work progress by 25% for a pomodoro session
+          const currentProgress = pomodoroGoal.progress || 0;
+          const newProgress = Math.min(currentProgress + 25, 99); // Cap at 99% to allow manual completion
+          handleUpdateProgress(pomodoroGoal.id, newProgress);
+      }
+      
+      setPomodoroGoal(null);
   };
 
   return (
@@ -357,6 +401,35 @@ const App: React.FC = () => {
         </div>
 
         <div className="space-y-8 flex-1 overflow-y-auto custom-scrollbar">
+            {/* Mode Toggle */}
+            <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 p-4">
+                <div className="text-slate-500 font-bold mb-3 text-xs">MODE</div>
+                <div className="flex gap-2">
+                    <button
+                        onClick={() => setAppMode('edit')}
+                        className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg transition-all ${
+                            appMode === 'edit'
+                                ? 'bg-blue-500 text-white'
+                                : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
+                        }`}
+                    >
+                        <Edit size={16} />
+                        <span className="text-sm font-medium">Edit</span>
+                    </button>
+                    <button
+                        onClick={() => setAppMode('work')}
+                        className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg transition-all ${
+                            appMode === 'work'
+                                ? 'bg-green-500 text-white'
+                                : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
+                        }`}
+                    >
+                        <Briefcase size={16} />
+                        <span className="text-sm font-medium">Work</span>
+                    </button>
+                </div>
+            </div>
+
             <StatsViz 
                 total={stats.total} 
                 completed={stats.completed} 
@@ -404,8 +477,22 @@ const App: React.FC = () => {
             <>
               <header className="px-8 py-6 border-b border-slate-100 bg-white/50 backdrop-blur-sm z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                   <div>
-                      <h2 className="text-2xl font-bold text-slate-800 tracking-tight font-mono">~/goals</h2>
-                      <p className="text-sm text-slate-400 font-mono mt-1">Status: {goals.length > 0 ? 'Tracking' : 'Idle'}</p>
+                      <div className="flex items-center gap-3 mb-2">
+                          <h2 className="text-2xl font-bold text-slate-800 tracking-tight font-mono">~/goals</h2>
+                          <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                              appMode === 'edit' 
+                                  ? 'bg-blue-100 text-blue-700' 
+                                  : 'bg-green-100 text-green-700'
+                          }`}>
+                              {appMode === 'edit' ? 'Edit Mode' : 'Work Mode'}
+                          </span>
+                      </div>
+                      <p className="text-sm text-slate-400 font-mono">
+                          Status: {goals.length > 0 ? 'Tracking' : 'Idle'} • 
+                          {appMode === 'edit' 
+                              ? ' Add and manage goals' 
+                              : ' Click tasks to start Pomodoro timer'}
+                      </p>
                   </div>
 
                   {/* Search Bar */}
@@ -439,6 +526,10 @@ const App: React.FC = () => {
                                   onMove={handleMoveGoal}
                                   onSetReminder={handleSetReminder}
                                   onToggleScheduledDay={handleToggleScheduledDay}
+                                  onSetOneTimeTask={handleSetOneTimeTask}
+                                  onGoalClick={handleGoalClick}
+                                  appMode={appMode}
+                                  viewMode={viewMode}
                               />
                           ))}
                       </div>
@@ -454,12 +545,21 @@ const App: React.FC = () => {
                   </div>
               </div>
 
-              {/* Command Bar Area */}
-              <CommandBar onAddGoal={handleAddGoal} selectedParentTitle={getParentTitle()} />
+              {/* Command Bar Area - Only show in edit mode */}
+              {appMode === 'edit' && <CommandBar onAddGoal={handleAddGoal} selectedParentTitle={getParentTitle()} />}
             </>
           } />
           <Route path="/visualization" element={<VisualizationPage goals={goals} />} />
         </Routes>
+
+        {/* Pomodoro Timer Modal */}
+        {pomodoroGoal && (
+          <PomodoroTimer
+            goal={pomodoroGoal}
+            onClose={() => setPomodoroGoal(null)}
+            onComplete={handlePomodoroComplete}
+          />
+        )}
       </main>
     </div>
   );

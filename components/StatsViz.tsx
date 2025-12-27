@@ -32,7 +32,7 @@ const StatsViz: React.FC<StatsVizProps> = ({ total, completed, overallProgress, 
     const timeRange = maxTime - minTime || 1;
 
     // Create points string
-    const points = history.map((snap, i) => {
+    const points = history.map((snap) => {
         const x = ((snap.timestamp - minTime) / timeRange) * width;
         const y = height - (snap.progress / 100) * height;
         return `${x},${y}`;
